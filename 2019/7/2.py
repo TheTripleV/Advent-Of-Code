@@ -15,7 +15,14 @@ class CPU:
     params_pos = [ -1, 0, 0, 0 ]
     slow = 0
 
+    simulated_inputs = []
+    simulated_outputs = []
+
+    simulate_inputs_flag = False
+    simulate_outputs_flag = False
+
     #flags
+    PAUSED = False
     FINISHED = False
     ERR = 0
     LOG = False
@@ -72,18 +79,52 @@ class CPU:
 
     # Set Instruction Set
     def set_instructions( self, instructions, copy=False ):
-        self.data = instructions.copy( ) if copy else instructions
-        self.data_backup = data.copy( )
+        self.data = instructions.copy() if copy else instructions
+        self.data_backup = data.copy()
+
+    def set_simulated_inputs( self, *inputs ):
+        self.simulated_inputs = list(inputs)
+        self.simulate_inputs_flag = True
+
+    def add_simulated_inputs( self, *inputs ):
+        self.simulated_inputs.extend( list(inputs) )
+        self.simulate_inputs_flag = True
+
+    def set_simulated_outputs( self, flag ):
+        self.simulate_outputs_flag = flag
+
+    def get_outputs( self ):
+        return self.simulated_outputs
+
+    def pause( self ):
+        self.PAUSED = True
+
+    def unpause( self ):
+        self.PAUSED = False
+        self.run()
+
+    def is_paused( self ):
+        return self.PAUSED
+
+    def is_finished( self ):
+        return self.FINISHED
+
+    def clear_outputs( self ):
+        self.simulated_outputs = []
 
     # Reset the CPU to initial state
     def reset( self ):
         self.FINISHED = False
         self.curr_pos = 0
         self.ERR = 0
+        self.simulated_inputs = []
+        self.simulated_outputs = []
 
     # Run all instructions ( Program Counter )
     def run( self ):
         while not self.FINISHED:
+            if self.PAUSED:
+                return
             self.step( )
             time.sleep( self.slow )
 
@@ -104,10 +145,20 @@ class CPU:
             self.data[ self.params_pos[ 3 ] ] = self.data[ self.params_pos[ 1 ] ] * self.data[ self.params_pos[ 2 ] ]
 
         elif self.op == 3:
-            self.data[ self.params_pos[ 1 ] ] = int( input( "INPUT>> " ) )
+            if self.simulate_inputs_flag:
+                if len(self.simulated_inputs) > 0:
+                    self.data[ self.params_pos[ 1 ] ] = self.simulated_inputs.pop(0)
+                else:
+                    self.PAUSED = True
+                    return
+            else:
+                self.data[ self.params_pos[ 1 ] ] = int( input( "INPUT>> " ) )
         
         elif self.op == 4:
-            print( 'OUTPUT>>', self.data[ self.params_pos[ 1 ] ] )
+            if self.simulate_outputs_flag:
+                self.simulated_outputs.append( self.data[ self.params_pos[ 1 ] ] )
+            else:
+                print( 'OUTPUT>>', self.data[ self.params_pos[ 1 ] ] )
 
         elif self.op == 5:
             if self.data[ self.params_pos[ 1 ] ] != 0:
@@ -185,15 +236,41 @@ class CPU:
 
 
 if __name__ == "__main__":
-    filename = 'fib.txt'
+
+    from itertools import permutations
+
+    filename = 'input.txt'
     data = [ int( x ) for x in open( filename, 'r' ).readline( ).split( ',' ) ]
 
-    cpu = CPU( )
-    cpu.set_instructions( data )
-    cpu.set_logging( True )
-    cpu.set_slow( 0.00 )
-    cpu.run( )
+    phase_sequence_base = [ 5, 6, 7, 8, 9 ]
 
-    # print( data )
+    cpus =  [ CPU() for i in range( 5 ) ]
+
+    max_output = 0
+
+    for phase_sequence in permutations( phase_sequence_base ):
+
+        # Setup
+        for idx in range (len( cpus ) ):
+            cpus[ idx ].reset()
+            cpus[ idx ].set_simulated_outputs( True )
+            cpus[ idx ].set_instructions( data, copy=True )
+            cpus[ idx ].add_simulated_inputs( phase_sequence[ idx ] )
+            cpus[ idx ].run()
+
+        output = 0
+        
+        # Loop
+        while not cpus[-1].is_finished():
+            for cpu in cpus:
+                cpu.add_simulated_inputs(output)
+                cpu.unpause()
+                output = cpu.get_outputs()[-1]
+
+        max_output = max(output, max_output)
+
+
+    print(max_output)
+
 
 
